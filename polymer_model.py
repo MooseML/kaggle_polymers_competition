@@ -82,7 +82,8 @@
 # polymer_model.py ----------------------------------------------------------
 import torch 
 import torch.nn as nn
-from hybrid_backbone import GNN_Transformer_Hybrid     # your existing code
+from hybrid_backbone import GNN_Transformer_Hybrid
+import torch.nn.functional as F
 
 class PolymerPredictor(nn.Module):
     def __init__(self, backbone_ckpt, n_out=5, freeze=True, use_gap=False, hidden=512, rdkit_dim=6):
@@ -111,9 +112,13 @@ class PolymerPredictor(nn.Module):
         if self.use_gap:
             # backbone must support return_gap=True and return (cls, gap)
             cls, g = self.backbone.forward_backbone_only(data, return_gap=True) # [B,512], [B, 512]
-            feats = torch.cat([cls,g], dim=1) # [B,1024]
+            # normalize each vector
+            cls = F.layer_norm(cls, (cls.size(-1),))
+            g   = F.layer_norm(g, (g.size(-1),))
+            feats = torch.cat([cls, g], dim=1) # [B,1024]
         else:
             cls = self.backbone.forward_backbone_only(data) # [B, 512]
+            cls = F.layer_norm(cls, (cls.size(-1),))
             feats = cls
         
         # Handle rdkit_feats dimensions properly
