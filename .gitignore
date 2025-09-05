@@ -3,3 +3,7 @@
 *.db
 *.sdf
 *.pt
+saved_models/
+plots/
+data/
+saved_models_*/
