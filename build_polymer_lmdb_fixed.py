@@ -5,7 +5,7 @@
 
 import os, sys, lmdb, tqdm, torch, numpy as np, pandas as pd
 from rdkit import Chem
-from rdkit.Chem import AllChem, Descriptors, HybridizationType
+from rdkit.Chem import AllChem, Descriptors, HybridizationType, SanitizeFlags
 from ogb.utils import smiles2graph
 from torch_geometric.data import Data
 from torch_geometric.utils import to_dense_adj
@@ -41,11 +41,43 @@ MAX_NODES = 381             # generous PCQM-style padding
 torch.manual_seed(0)
 np.random.seed(0)
 
-# ───────────────────────── helper functions ──────────────────────
-def clean_polymer_smiles(smiles: str) -> str:
-    """Replace polymer wildcard '*' with '[H]' to keep RDKit happy."""
-    return smiles.replace('*', '[H]')
+# ───────────────────────── polymer normalization ──────────────────
+def rdkit_ogb_agree(smi: str) -> bool:
+    m = Chem.MolFromSmiles(smi)
+    if m is None:
+        return False
+    return m.GetNumAtoms() == smiles2graph(smi)["num_nodes"]
 
+def canonicalize_polymer_smiles(smiles: str, cap_atomic_num: int = 6) -> str:
+    """
+    Turn every '*' (dummy atom) into a real atom (default C) in the RDKit graph,
+    preserving existing bond orders/stereo; sanitize, remove explicit Hs, and
+    return canonical isomeric SMILES.
+    """
+    mol = Chem.MolFromSmiles(smiles, sanitize=False)
+    if mol is None:
+        raise ValueError(f"RDKit could not parse SMILES: {smiles}")
+
+    rw = Chem.RWMol(mol)
+    for a in rw.GetAtoms():
+        if a.GetAtomicNum() == 0:   # '*'
+            a.SetAtomicNum(cap_atomic_num)  # 6 = carbon
+            a.SetFormalCharge(0)
+            a.SetIsAromatic(False)
+            a.SetNoImplicit(False)
+            a.SetNumExplicitHs(0)
+
+    mol2 = rw.GetMol()
+    try:
+        Chem.SanitizeMol(mol2)
+    except Exception:
+        Chem.SanitizeMol(mol2, sanitizeOps=SanitizeFlags.SANITIZE_ALL ^ SanitizeFlags.SANITIZE_KEKULIZE)
+        Chem.Kekulize(mol2, clearAromaticFlags=True)
+
+    mol2 = Chem.RemoveHs(mol2)
+    return Chem.MolToSmiles(mol2, isomericSmiles=True, canonical=True)
+
+# ───────────────────────── helper functions ──────────────────────
 def rbf(d, K=32, D_min=0., D_max=10., beta=5.0):
     """Radial basis function expansion for edge distances."""
     d_np = d.numpy() if isinstance(d, torch.Tensor) else d
@@ -73,9 +105,9 @@ def get_atom_features(atom):
     ]
 
 def safe_rdkit6(smiles: str):
-    """Six RDKit molecular descriptors; robust to bad inputs."""
+    """Six RDKit molecular descriptors; input must be canonicalized & valid."""
     try:
-        m = Chem.MolFromSmiles(clean_polymer_smiles(smiles))
+        m = Chem.MolFromSmiles(smiles)
         if m is None:
             raise ValueError("MolFromSmiles returned None")
         return [
@@ -90,31 +122,38 @@ def safe_rdkit6(smiles: str):
         print(f"[safe_rdkit6] Warning on SMILES={smiles!r}: {e}")
         return [0.0]*6
 
-def make_conformer(smiles: str, seed: int = 0, max_iters: int = 200):
-    """ETKDG → UFF/MMFF; add/remove Hs appropriately for better coords."""
-    try:
-        base = clean_polymer_smiles(smiles)
-        m = Chem.MolFromSmiles(base)
-        if m is None:
-            return None
-        m = Chem.AddHs(m)
-        params = AllChem.ETKDGv3()
-        params.randomSeed = seed
-        params.useRandomCoords = True
-        if AllChem.EmbedMolecule(m, params) == -1:
-            return None
-        try:
-            AllChem.UFFOptimizeMolecule(m, maxIters=max_iters)
-        except RuntimeError:
-            try:
-                AllChem.MMFFOptimizeMolecule(m, mmffVariant='MMFF94', maxIters=max_iters)
-            except Exception:
-                pass
-        m = Chem.RemoveHs(m)
-        return m
-    except Exception as e:
-        print(f"[make_conformer] Warning for {smiles!r}: {e}")
-        return None
+def make_conformer(smiles: str, seeds=(0, 17, 42, 314159), max_iters: int = 300):
+    """
+    Try multiple ETKDG variants; if all fail, return a 2D Mol (no conformers).
+    Caller can check mol.GetNumConformers() to decide xyz vs. zero-pad.
+    """
+    base = Chem.MolFromSmiles(smiles)
+    if base is None:
+        return None  # truly unparsable (should be rare after canonicalization)
+
+    # Try a few seeds and both random/non-random coords
+    for use_random in (True, False):
+        for seed in seeds:
+            m = Chem.AddHs(Chem.Mol(base))
+            params = AllChem.ETKDGv3()
+            params.randomSeed = seed
+            params.useRandomCoords = use_random
+            params.enforceChirality = True
+            params.pruneRmsThresh = -1.0  # disable RMS pruning to keep attempts independent
+            res = AllChem.EmbedMolecule(m, params)
+            if res != -1:
+                try:
+                    AllChem.UFFOptimizeMolecule(m, maxIters=max_iters)
+                except Exception:
+                    try:
+                        AllChem.MMFFOptimizeMolecule(m, mmffVariant='MMFF94', maxIters=max_iters)
+                    except Exception:
+                        pass
+                return Chem.RemoveHs(m)
+
+    # Embedding failed -> still return a valid 2D molecule
+    return Chem.RemoveHs(base)
+
 
 @torch.no_grad()
 def hop_distance(edge_index, num_nodes, max_dist=MAX_HOPS):
@@ -137,8 +176,16 @@ def hop_distance(edge_index, num_nodes, max_dist=MAX_HOPS):
 # ───────────────────────── read CSV ───────────────────────────────
 df = pd.read_csv(CSV_PATH)
 assert 'id' in df.columns and 'SMILES' in df.columns, "CSV must have id and SMILES"
-graph_ids = df['id'].astype(int).tolist()
-smiles    = df['SMILES'].astype(str).tolist()
+
+# Precompute canonical SMILES once
+df['SMILES'] = df['SMILES'].astype(str)
+df['SMILES_canon'] = df['SMILES'].map(canonicalize_polymer_smiles)
+
+# Index by id so labels align by id (not row position)
+df.set_index('id', inplace=True)
+
+graph_ids = df.index.astype(int).tolist()
+smiles    = df['SMILES_canon'].tolist()
 assert len(graph_ids) == len(smiles)
 
 LABEL_COLS = ['Tg', 'FFV', 'Tc', 'Density', 'Rg']
@@ -160,17 +207,28 @@ try:
                                              total=len(smiles),
                                              desc=f"encode {SPLIT}")):
         try:
-            # 1) 2-D graph (use cleaned SMILES for OGB)
-            g = smiles2graph(clean_polymer_smiles(smi))
+            # (optional) early agreement guard
+            if not rdkit_ogb_agree(smi):
+                raise ValueError("Atom/node mismatch even after canonicalization.")
+
+            # 1) 2-D graph (canonicalized SMILES for OGB)
+            g = smiles2graph(smi)
             data = Data(
                 x          = torch.tensor(g['node_feat'],   dtype=torch.long),
                 edge_index = torch.tensor(g['edge_index'],  dtype=torch.long),
                 edge_attr  = torch.tensor(g['edge_feat'],   dtype=torch.float32),
             )
 
-            # 2) 3-D geometry branch
+            # 2) 3-D geometry branch using the same canonical string
             mol = make_conformer(smi)
-            if mol is not None and mol.GetNumConformers() > 0:
+            if mol is None:
+                raise ValueError("RDKit Mol object could not be created or conformed.")
+
+            # Hard guard on counts
+            if g['num_nodes'] != mol.GetNumAtoms():
+                raise ValueError(f"Atom count mismatch: OGB has {g['num_nodes']} nodes, RDKit Mol has {mol.GetNumAtoms()}.")
+
+            if mol.GetNumConformers() > 0:
                 conf = mol.GetConformer()
                 pos = torch.tensor([[conf.GetAtomPosition(a).x,
                                      conf.GetAtomPosition(a).y,
@@ -186,18 +244,19 @@ try:
                 )
                 data.has_xyz = torch.ones(1, dtype=torch.bool)
             else:
+                # No conformer -> keep the sample with zero-padded xyz features
                 E = data.edge_attr.size(0)
                 data.pos = torch.zeros(data.x.size(0), 3, dtype=torch.float32)
                 data.edge_attr = torch.cat([data.edge_attr, torch.zeros(E, 32)], dim=1)
                 data.extra_atom_feats = torch.zeros(data.x.size(0), 5, dtype=torch.float32)
                 data.has_xyz = torch.zeros(1, dtype=torch.bool)
 
-            # 3) RDKit globals + labels
+            # 3) RDKit globals + labels (use the SAME canonical string)
             data.rdkit_feats = torch.tensor(safe_rdkit6(smi), dtype=torch.float32).unsqueeze(0)  # (1,6)
 
             if store_lbl:
-                vals = df.loc[i, LABEL_COLS].values
-                vals = pd.to_numeric(vals, errors='coerce')  # np.nan where missing
+                vals = df.loc[gid, LABEL_COLS].values
+                vals = pd.to_numeric(vals, errors='coerce')
                 data.y = torch.tensor(vals, dtype=torch.float32).unsqueeze(0)  # (1,5)
             else:
                 data.y = torch.zeros(1, 5, dtype=torch.float32)
@@ -206,7 +265,11 @@ try:
             dist = hop_distance(data.edge_index, data.x.size(0))
             pad  = torch.full((MAX_NODES, MAX_NODES), MAX_HOPS, dtype=torch.float32)
             n    = dist.size(0)
-            pad[:n, :n] = dist
+            if n <= MAX_NODES:
+                pad[:n, :n] = dist
+            else:
+                # for super-large graphs, keep MAX_HOPS everywhere (rare)
+                pass
             data.dist = pad.to(torch.uint8)
 
             # 5) write
