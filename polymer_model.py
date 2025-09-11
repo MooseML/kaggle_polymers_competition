@@ -86,10 +86,10 @@ from hybrid_backbone import GNN_Transformer_Hybrid
 import torch.nn.functional as F
 
 class PolymerPredictor(nn.Module):
-    def __init__(self, backbone_ckpt, n_out=5, freeze=True, use_gap=False, hidden=512, rdkit_dim=6):
+    def __init__(self, backbone_ckpt, n_out=5, freeze=True, use_gap=False, hidden=512, rdkit_dim=15):
         super().__init__()
         self.backbone = GNN_Transformer_Hybrid(
-                gnn_dim=512, hidden_dim=256, rdkit_dim=6,
+                gnn_dim=512, hidden_dim=256, rdkit_dim=15,
                 extra_atom_dim=5, dropout_rate=0.2142, activation='GELU')
         self.backbone.load_state_dict(
                 torch.load(backbone_ckpt, map_location='cpu'))
@@ -99,7 +99,7 @@ class PolymerPredictor(nn.Module):
 
         self.use_gap = use_gap
         self.hidden = 512
-        self.rdkit_dim = 6
+        self.rdkit_dim = 15
         in_dim = self.hidden * 2 if use_gap else self.hidden 
         # new 5-output head
         self.head = nn.Sequential(
