@@ -53,13 +53,13 @@ class GraphData(Data):
             dist            = torch.from_numpy(d['dist']).float(),  # uint8 → fp32 (N, N)
         )
 
-class LMDBDataset(Dataset):
-    def __init__(self, ids, path):
-        self.ids=list(ids); self.path=path; self.env=None
-    def __len__(self): return len(self.ids)
-    def __getitem__(self,i):
-        if self.env is None:
-            self.env=lmdb.open(self.path,readonly=True,lock=False,readahead=False)
-        with self.env.begin(buffers=True) as txn:
-            buf=txn.get(str(self.ids[i]).encode())
-        return GraphData.dict2data( GraphData.undump(bytes(buf)) )
+# class LMDBDataset(Dataset):
+#     def __init__(self, ids, path):
+#         self.ids=list(ids); self.path=path; self.env=None
+#     def __len__(self): return len(self.ids)
+#     def __getitem__(self,i):
+#         if self.env is None:
+#             self.env=lmdb.open(self.path,readonly=True,lock=False,readahead=False)
+#         with self.env.begin(buffers=True) as txn:
+#             buf=txn.get(str(self.ids[i]).encode())
+#         return GraphData.dict2data( GraphData.undump(bytes(buf)) )

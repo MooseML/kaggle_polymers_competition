@@ -351,6 +351,7 @@ from ogb.utils import smiles2graph
 from torch_geometric.data import Data
 from torch_geometric.utils import to_dense_adj
 from graphdata_lmdb import GraphData
+from psmiles_canon import canonicalize as canonicalize_psmiles
 
 # ───────────────────────────── args ───────────────────────────────
 if len(sys.argv) != 2 or sys.argv[1] not in {"train", "test"}:
@@ -364,7 +365,7 @@ if os.path.exists('/kaggle'):
     SAVE_DIR  = '/kaggle/working/processed_chunks'
 else:
     DATA_ROOT = 'data'
-    SAVE_DIR  = os.path.join(DATA_ROOT, "processed_chunks")
+    SAVE_DIR  = os.path.join(DATA_ROOT, "processed_chunks_new_CANON")
 
 CSV_PATH  = os.path.join(DATA_ROOT, f"{SPLIT}.csv")
 LMDB_OUT  = os.path.join(SAVE_DIR, f"polymer_{SPLIT}3d_dist.lmdb")
@@ -376,7 +377,7 @@ if os.path.exists(LMDB_OUT):
 
 # ─────────────────────────── constants ────────────────────────────
 # Start small; we will auto-resize on MapFullError
-MAP_SIZE_INIT = 2 * (1 << 30)   # 2 GiB
+MAP_SIZE_INIT = 4 * (1 << 30)   # 2 GiB
 MAX_HOPS  = 3
 MAX_NODES = 381                 # generous PCQM-style padding
 
@@ -384,6 +385,7 @@ MAX_NODES = 381                 # generous PCQM-style padding
 N_CONFORMER_TRAIN = 10
 N_CONFORMER_TEST  = 5
 AUG_KEY_MULT      = 1000        # key_id = parent_id * AUG_KEY_MULT + aug_idx
+REPLACEMENT_Z     = 6 # which atom to replace wildcard * with 
 
 def n_aug_for_split(split: str) -> int:
     return N_CONFORMER_TRAIN if split == "train" else N_CONFORMER_TEST
@@ -392,6 +394,22 @@ torch.manual_seed(0)
 np.random.seed(0)
 
 # ───────────────────────── polymer normalization ──────────────────
+def _cap_then_rdkit_canon(s: str) -> str:
+    # your existing robust function, unchanged:
+    return canonicalize_polymer_smiles(s, replace_atomic_num=REPLACEMENT_Z)[0]
+
+def _psmiles_then_cap(s: str) -> str:
+    try:
+        s1 = canonicalize_psmiles(s)     # unify + reduce
+    except Exception:
+        s1 = s
+    try:
+        return _cap_then_rdkit_canon(s1) # replace stars → sanitize → canonical SMILES
+    except Exception:
+        # last resort: RDKit canonicalize the unified string
+        m = Chem.MolFromSmiles(s1)
+        return Chem.MolToSmiles(m, isomericSmiles=True, canonical=True) if m else s1
+    
 def rdkit_ogb_agree(smi: str) -> bool:
     m = Chem.MolFromSmiles(smi)
     if m is None:
@@ -401,20 +419,26 @@ def rdkit_ogb_agree(smi: str) -> bool:
     except Exception:
         return False
 
-def canonicalize_polymer_smiles(smiles: str, cap_atomic_num: int = 6) -> str:
+def canonicalize_polymer_smiles(
+    smiles: str,
+    replace_atomic_num: int = 6,     # 6=C (current default), 7=N, 8=O, etc.
+    record_star_idx: bool = True,    # record positions of '*' before replacement
+    kekulize_on_fallback: bool = True
+):
     """
-    Turn every '*' (dummy atom) into a real atom (default C) in the RDKit graph,
-    preserving existing bond orders/stereo; sanitize, remove explicit Hs, and
-    return canonical isomeric SMILES.
+    Replace '*' (atomic #0) with a real atom for graph/3D stability, sanitize,
+    and return canonical isomeric SMILES. Optionally record star indices.
     """
     mol = Chem.MolFromSmiles(smiles, sanitize=False)
     if mol is None:
         raise ValueError(f"RDKit could not parse SMILES: {smiles}")
 
+    star_atom_ids = [a.GetIdx() for a in mol.GetAtoms() if a.GetAtomicNum() == 0]
+
     rw = Chem.RWMol(mol)
     for a in rw.GetAtoms():
-        if a.GetAtomicNum() == 0:   # '*'
-            a.SetAtomicNum(cap_atomic_num)  # 6 = carbon
+        if a.GetAtomicNum() == 0:
+            a.SetAtomicNum(replace_atomic_num)
             a.SetFormalCharge(0)
             a.SetIsAromatic(False)
             a.SetNoImplicit(False)
@@ -424,11 +448,20 @@ def canonicalize_polymer_smiles(smiles: str, cap_atomic_num: int = 6) -> str:
     try:
         Chem.SanitizeMol(mol2)
     except Exception:
+        # fallback without kekulization first; then try explicit kekulize if asked
         Chem.SanitizeMol(mol2, sanitizeOps=SanitizeFlags.SANITIZE_ALL ^ SanitizeFlags.SANITIZE_KEKULIZE)
-        Chem.Kekulize(mol2, clearAromaticFlags=True)
+        if kekulize_on_fallback:
+            Chem.Kekulize(mol2, clearAromaticFlags=True)
 
+    # ensure defined stereochem after sanitize
+    Chem.AssignStereochemistry(mol2, cleanIt=True, force=True)
+
+    # explicit Hs confuse canonical SMILES comparisons; remove for stability
     mol2 = Chem.RemoveHs(mol2)
-    return Chem.MolToSmiles(mol2, isomericSmiles=True, canonical=True)
+
+    can = Chem.MolToSmiles(mol2, isomericSmiles=True, canonical=True)
+    meta = {"star_indices": star_atom_ids} if record_star_idx else {}
+    return can, meta
 
 # ───────────────────────── helper functions ──────────────────────
 def rbf(d, K=32, D_min=0., D_max=10., beta=5.0):
@@ -458,16 +491,19 @@ def get_atom_features(atom):
     ]
 
 def safe_rdkit15(smiles_str: str):
-    """15 stable RDKit descriptors; input must be canonicalized & valid."""
+    """15 stable RDKit descriptors; input should already be canonicalized SMILES."""
     try:
-        s = canonicalize_polymer_smiles(smiles_str)
-        m = Chem.MolFromSmiles(s)
+        # Defensive: if a tuple sneaks in, take the string
+        if isinstance(smiles_str, tuple):
+            smiles_str = smiles_str[0]
+
+        m = Chem.MolFromSmiles(smiles_str)
         if m is None:
             raise ValueError("MolFromSmiles returned None")
 
         heavy = Descriptors.HeavyAtomCount(m)
         arom_atoms = sum(a.GetIsAromatic() for a in m.GetAtoms())
-        hetero = sum(a.GetAtomicNum() not in (1, 6) for a in m.GetAtoms())
+        hetero     = sum(a.GetAtomicNum() not in (1, 6) for a in m.GetAtoms())
         aromatic_prop = (arom_atoms / max(1, heavy))
         hetero_frac   = (hetero / max(1, heavy))
 
@@ -491,6 +527,7 @@ def safe_rdkit15(smiles_str: str):
     except Exception as e:
         print(f"[safe_rdkit15] Warning on SMILES={smiles_str!r}: {e}")
         return [0.0] * 15
+
 
 def seed_for(parent_id: int, aug_idx: int) -> int:
     # 32-bit deterministic seed from ids
@@ -546,8 +583,11 @@ df = pd.read_csv(CSV_PATH)
 assert 'id' in df.columns and 'SMILES' in df.columns, "CSV must have id and SMILES"
 
 # Precompute canonical SMILES once
-df['SMILES'] = df['SMILES'].astype(str)
-df['SMILES_canon'] = df['SMILES'].map(canonicalize_polymer_smiles)
+# Start with raw PSMILES strings in df['SMILES'] (two stars form)
+df['SMILES_pscanon'] = df['SMILES'].astype(str).map(canonicalize_psmiles)
+
+# Final canonical string used downstream / stored in LMDB:
+df['SMILES_canon'] = df['SMILES_pscanon'].map(_psmiles_then_cap)
 
 # Index by id so labels align by id (not row position)
 df.set_index('id', inplace=True)
@@ -561,6 +601,7 @@ store_lbl  = (SPLIT == "train")
 N_AUG      = n_aug_for_split(SPLIT)
 
 print(f"→ will write {len(graph_ids):,} x {N_AUG} {SPLIT} graphs to {LMDB_OUT}")
+print(f"Wildcard replacement atom Z = {REPLACEMENT_Z}")
 
 # ───────────────────────── open LMDB ──────────────────────────────
 env = lmdb.open(LMDB_OUT, map_size=MAP_SIZE_INIT, subdir=True, lock=True)
@@ -586,6 +627,7 @@ def put_with_resize(txn, key_bytes, value_bytes):
 
 kept_ids   = []
 parent_rows = []  # for parent_map.tsv
+parent_meta_rows = []     
 n_ok       = 0
 n_skipped  = 0
 commit_every = 5_000
@@ -605,7 +647,20 @@ try:
                 edge_index = torch.tensor(g['edge_index'],  dtype=torch.long),
                 edge_attr  = torch.tensor(g['edge_feat'],   dtype=torch.float32),
             )
+            assert int(g['num_nodes']) == base_data.x.size(0)
+            # Compute size/meta once per parent
+            raw_smi = df.loc[gid, 'SMILES']          # original, not canonicalized
+            n_atoms_2d = int(g['num_nodes'])
+            ps = df.loc[gid, 'SMILES_pscanon'] if 'SMILES_pscanon' in df.columns else df.loc[gid, 'SMILES']
+            star_count = ps.count('[*]')  # after our normalization this is correct
+            replacement_Z = REPLACEMENT_Z              # current default
 
+            # keep on base_data so it travels into every augmented child
+            base_data.n_atoms_2d = torch.tensor([n_atoms_2d], dtype=torch.int32)
+            base_data.star_count = torch.tensor([star_count], dtype=torch.int16)
+            base_data.replacement_Z = torch.tensor([replacement_Z], dtype=torch.int16)
+            # add a CSV row (once per parent)
+            parent_meta_rows.append((int(gid), n_atoms_2d, star_count, replacement_Z))
             # 2) hop-distance (same for all augs)
             dist = hop_distance(base_data.edge_index, base_data.x.size(0))
             pad  = torch.full((MAX_NODES, MAX_NODES), MAX_HOPS, dtype=torch.float32)
@@ -697,6 +752,17 @@ try:
     print(f"wrote {len(kept_ids)} ids to {idx_path}")
     print(f"wrote parent map to {pmap_path}")
     print(f"Finished {SPLIT}: kept={n_ok}, skipped={n_skipped}")
+    meta_parent_path = LMDB_OUT + ".parent_meta.tsv"
+    with open(meta_parent_path, "w") as f:
+        f.write("parent_id\tn_atoms_2d\tstar_count\treplacement_Z\n")
+        seen = set()
+        for row in parent_meta_rows:
+            pid = row[0]
+            if pid in seen: 
+                continue
+            seen.add(pid)
+            f.write(f"{row[0]}\t{row[1]}\t{row[2]}\t{row[3]}\n")
+    print(f"wrote parent meta to {meta_parent_path}")
 
     # Size
     try:
