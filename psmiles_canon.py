@@ -249,10 +249,10 @@ def get_index_to_break(mol: Chem.RWMol, info: Dict) -> Tuple[int, int]:
 def unify(psmiles: str) -> str:
     r"""
     “Unify” a PSMILES by:
-      • connecting the two star-neighbors with the star-neighbor bond type,
-      • removing stars,
-      • canonicalizing the now cyclic molecule,
-      • breaking a ring bond and re-adding stars at that position.
+      - connecting the two star-neighbors with the star-neighbor bond type,
+      - removing stars,
+      - canonicalizing the now cyclic molecule,
+      - breaking a ring bond and re-adding stars at that position.
     """
 
     # Show atom indices when DEBUG
@@ -288,7 +288,7 @@ def unify(psmiles: str) -> str:
     # (2) connect neighbors
     logging.debug("(2) Connect neighbors with star-neighbor bond type(s)")
     if not info["neighbor"]["index"][0] or not info["neighbor"]["index"][1]:
-        # not enough info to connect; bail out gracefully
+        # not enough info to connect so we bail out gracefully
         return Chem.MolToSmiles(mol)
 
     bt0 = info["neighbor"]["bond_type"][0][0] if info["neighbor"]["bond_type"][0] else Chem.BondType.SINGLE
@@ -329,7 +329,7 @@ def unify(psmiles: str) -> str:
     sm = Chem.MolToCXSmiles(mol)
     mol = Chem.RWMol(Chem.MolFromSmiles(sm))
     Chem.Kekulize(mol, clearAromaticFlags=True)
-    Chem.Kekulize(mol, clearAromaticFlags=True)  # idempotence guard
+    Chem.Kekulize(mol, clearAromaticFlags=True) # idempotence guard
     sm = Chem.MolToCXSmiles(mol)
     mol = Chem.RWMol(Chem.MolFromSmiles(sm))
     if logging.DEBUG >= logging.root.level:
@@ -366,9 +366,9 @@ def unify(psmiles: str) -> str:
 def canonicalize(psmiles: str) -> str:
     """
     Full pipeline:
-      (1) unify once (connect → canonize ring → reopen)
+      (1) unify once (connect --> canonize ring --> reopen)
       (2) add brackets if needed
-      (3) iteratively reduce literal repeats (≤20 passes)
+      (3) iteratively reduce literal repeats (<=20 passes)
       (4) add brackets again
     """
     new_ps = unify(psmiles)

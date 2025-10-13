@@ -16,7 +16,7 @@ def load_base(path: str) -> pd.DataFrame:
     for c in LABEL_COLS:
         if c not in df.columns:
             df[c] = np.nan
-    # Types and minimal cleanup (strip only; NO canonicalization)
+    # Types and minimal cleanup (strip only, NO canonicalization)
     df['id'] = df['id'].astype(int)
     df['SMILES'] = df['SMILES'].astype(str).str.strip()
     for c in LABEL_COLS:
@@ -75,7 +75,7 @@ def merge_all(base_path: str, d1_path: str, d3_path: str, d4_path: str, out_path
     d4 = load_supp(d4_path, 'FFV', value_names_hint=('FFV','ffv'))
 
     filled = {'Tc': 0, 'Tg': 0, 'FFV': 0}
-    pending_new = {}  # SMILES -> dict with any of Tg/FFV/Tc set
+    pending_new = {} # SMILES -> dict with any of Tg/FFV/Tc set
 
     def fill_or_queue(smiles: str, target: str, value: float):
         if smiles in smiles_to_idx:

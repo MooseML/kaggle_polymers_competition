@@ -1,4 +1,4 @@
-# dataset_polymer_fixed.py ----------------------------------------------------------
+#  ---------------------------------------------------------- dataset_polymer_fixed.py ----------------------------------------------------------
 import os
 import torch
 import pandas as pd
@@ -50,7 +50,7 @@ def make_conformer(smiles: str, seed: int = 0, max_iters: int = 200):
         try:
             AllChem.MMFFOptimizeMolecule(m, mmffVariant='MMFF94', maxIters=max_iters)
         except Exception:
-            pass  # keep raw ETKDG coords
+            pass # keep raw ETKDG coords
     
     return m
 
@@ -113,7 +113,7 @@ class GraphData(Data):
     @staticmethod
     def dump(obj):
         return lz4f.compress(pickle.dumps(obj, pickle.HIGHEST_PROTOCOL),
-                            compression_level=0,     # fastest
+                            compression_level=0, # fastest
                             block_linked=True)
     @staticmethod
     def undump(buf: bytes):
@@ -135,16 +135,16 @@ class GraphData(Data):
 
     @staticmethod
     def dict2data(d):
-        return GraphData(           # ← use the subclass!
-            x               = torch.from_numpy(d['x']).long(),
-            edge_index      = torch.from_numpy(d['edge_index']).long(),
-            edge_attr       = torch.from_numpy(d['edge_attr']).float(),
-            pos             = torch.from_numpy(d['pos']),
-            extra_atom_feats= torch.from_numpy(d['extra_atom']),
-            rdkit_feats     = torch.from_numpy(d['rdkit']),
-            y               = torch.from_numpy(d['y']),
-            has_xyz         = torch.tensor([d['has_xyz']], dtype=torch.bool),
-            dist            = torch.from_numpy(d['dist']).float(),  # uint8 → fp32 (N, N)
+        return GraphData(        
+            x = torch.from_numpy(d['x']).long(),
+            edge_index = torch.from_numpy(d['edge_index']).long(),
+            edge_attr = torch.from_numpy(d['edge_attr']).float(),
+            pos = torch.from_numpy(d['pos']),
+            extra_atom_feats = torch.from_numpy(d['extra_atom']),
+            rdkit_feats = torch.from_numpy(d['rdkit']),
+            y = torch.from_numpy(d['y']),
+            has_xyz = torch.tensor([d['has_xyz']], dtype=torch.bool),
+            dist = torch.from_numpy(d['dist']).float(), # uint8 -> fp32 (N, N)
         )
 
 from torch.utils.data import Dataset
@@ -162,7 +162,7 @@ class LMDBDataset(Dataset):
         self.env  = None
         self.strict = strict
 
-        # Prefer companion ids file (written by the builder); fallback to scanning LMDB once.
+        # Prefer companion ids file (written by the builder) and fallback to scanning LMDB once
         idx_path = self.path + ".ids.txt"
         if os.path.exists(idx_path):
             with open(idx_path) as f:
@@ -216,10 +216,9 @@ class LMDBDataset(Dataset):
         return GraphData.dict2data(GraphData.undump(bytes(buf)))
 
 
-
 class PolymerCSV(Dataset):
     """
-    On-the-fly dataset that converts SMILES → 3D graph at runtime.
+    On-the-fly dataset that converts SMILES -> 3D graph at runtime.
     Slower than LMDB but useful for debugging.
     """
     def __init__(self, csv_path, split='train', transform=None, seed=0):
@@ -240,7 +239,7 @@ class PolymerCSV(Dataset):
         smiles = row['SMILES']
         graph_id = row['id']
         
-        # 1) Basic 2D graph
+        # Basic 2D graph
         g = smiles2graph(smiles)
         data = Data(
             x = torch.tensor(g['node_feat'], dtype=torch.long),
@@ -248,7 +247,7 @@ class PolymerCSV(Dataset):
             edge_attr = torch.tensor(g['edge_feat'], dtype=torch.float32)
         )
         
-        # 2) 3D geometry (ETKDG)
+        # 3D geometry (ETKDG)
         mol = make_conformer(smiles, seed=self.seed + idx)
         if mol is not None and mol.GetNumConformers() > 0:
             conf = mol.GetConformer()
@@ -257,30 +256,29 @@ class PolymerCSV(Dataset):
                                conf.GetAtomPosition(a).z]
                               for a in range(mol.GetNumAtoms())],
                              dtype=torch.float32)
-            dist = torch.norm(pos[data.edge_index[0]] -
-                            pos[data.edge_index[1]], dim=1, keepdim=True)
+            dist = torch.norm(pos[data.edge_index[0]] - pos[data.edge_index[1]], dim=1, keepdim=True)
             data.pos = pos
-            data.edge_attr = torch.cat([data.edge_attr, rbf(dist)], 1)  # +32
+            data.edge_attr = torch.cat([data.edge_attr, rbf(dist)], 1) # +32
             data.extra_atom_feats = torch.tensor(
                 [get_atom_features(a) for a in mol.GetAtoms()],
                 dtype=torch.float32)
             data.has_xyz = torch.ones(1, dtype=torch.bool)
         else:
-            # Fallback - no 3D
+            # Fallback to no 3D
             E = data.edge_attr.size(0)
             data.pos = torch.zeros(data.x.size(0), 3)
             data.edge_attr = torch.cat([data.edge_attr, torch.zeros(E, 32)], 1)
             data.extra_atom_feats = torch.zeros(data.x.size(0), 5)
             data.has_xyz = torch.zeros(1, dtype=torch.bool)
         
-        # 3) RDKit globals + labels
+        # RDKit globals + labels
         data.rdkit_feats = torch.tensor(safe_rdkit6(smiles), dtype=torch.float32)
         if self.store_labels:
             data.y = torch.tensor(row[self.label_cols].values, dtype=torch.float32)
         else:
             data.y = torch.zeros(5)
         
-        # 4) Hop distance padding
+        # Hop distance padding
         dist = hop_distance(data.edge_index, data.x.size(0))
         pad = torch.full((MAX_NODES, MAX_NODES), MAX_HOPS, dtype=dist.dtype)
         n = dist.size(0)
