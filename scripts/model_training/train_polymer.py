@@ -342,7 +342,7 @@ def main():
         if current_mae < best_mae:
             best_mae = current_mae
             best_model_state = model.state_dict().copy()
-            print(f"  → New best validation MAE: {best_mae:.4f}")
+            print(f"New best validation MAE: {best_mae:.4f}")
     
     # Load best model for final evaluation and submission
     if best_model_state is not None:

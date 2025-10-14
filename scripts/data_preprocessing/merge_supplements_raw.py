@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # Merge supplement CSVs into train.csv using RAW string SMILES matching.
-# No canonicalization. Base values win; only fill NaNs. New SMILES get new ids.
-
+# No canonicalization. Base values win. only fill NaNs. New SMILES get new ids.
 import os, argparse
 import pandas as pd
 import numpy as np
@@ -75,7 +74,7 @@ def merge_all(base_path: str, d1_path: str, d3_path: str, d4_path: str, out_path
     d4 = load_supp(d4_path, 'FFV', value_names_hint=('FFV','ffv'))
 
     filled = {'Tc': 0, 'Tg': 0, 'FFV': 0}
-    pending_new = {}  # SMILES -> dict with any of Tg/FFV/Tc set
+    pending_new = {} # SMILES -> dict with any of Tg/FFV/Tc set
 
     def fill_or_queue(smiles: str, target: str, value: float):
         if smiles in smiles_to_idx:

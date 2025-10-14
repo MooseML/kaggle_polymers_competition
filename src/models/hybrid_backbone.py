@@ -109,7 +109,7 @@ class TripletBlock(nn.Module):
 
         v1 = pos[i] - pos[j]
         v2 = pos[i] - pos[k]
-        cos = (v1 * v2).sum(-1, keepdim=True) / (1.norm(dim=-1, keepdim=True) * v2.norm(dim=-1, keepdim=True) + 1e-9)
+        cos = (v1 * v2).sum(dim=-1, keepdim=True) / (v1.norm(dim=-1, keepdim=True) * v2.norm(dim=-1, keepdim=True) + 1e-9)
         ang = torch.acos(torch.clamp(cos, -1 + 1e-6, 1 - 1e-6)) # (T, 1)
         gate = self.angle_mlp(ang) # (T, D)
 

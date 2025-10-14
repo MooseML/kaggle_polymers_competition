@@ -1,4 +1,4 @@
-# polymer_model.py ----------------------------------------------------------
+#---------------------------------------------------------- polymer_predictor.py ----------------------------------------------------------
 import torch 
 import torch.nn as nn
 from hybrid_backbone import GNN_Transformer_Hybrid
@@ -52,7 +52,7 @@ class PolymerPredictor(nn.Module):
             # Already batched, but might need to aggregate if it's per-atom features
             if rdkit_feats.size(0) != cls.size(0):
                 # If rdkit_feats has more rows than batch size, it might be per-atom
-                # In that case, we need to aggregate by molecule
+                # In that case, need to aggregate by molecule
                 batch_size = cls.size(0)
                 rdkit_global = []
                 for i in range(batch_size):
