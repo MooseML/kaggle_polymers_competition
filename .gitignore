@@ -7,4 +7,5 @@ saved_models/
 plots/
 data/
 saved_models_*/
-notebooks/05_experimental_post_competition/*
+notebooks/archive/*
+notebooks/04_experimental_post_competition/*
