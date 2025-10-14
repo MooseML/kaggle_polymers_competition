@@ -8,4 +8,4 @@ plots/
 data/
 saved_models_*/
 notebooks/archive/*
-notebooks/04_experimental_post_competition/*
+notebooks/04_post_competition/*
