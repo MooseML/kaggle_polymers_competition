@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Merge supplement CSVs into train.csv using RAW string SMILES matching.
-# No canonicalization. Base values win. only fill NaNs. New SMILES get new ids.
+# No canonicalization. Base values win; only fill NaNs. New SMILES get new ids.
 
 import os, argparse
 import pandas as pd
