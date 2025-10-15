@@ -252,11 +252,11 @@ def main():
     if os.path.exists('/kaggle'):
         data_root = '/kaggle/input/neurips-open-polymer-prediction-2025'
         chunk_dir = '/kaggle/working/processed_chunks'
-        backbone_path = '/kaggle/input/polymer/best_gnn_transformer_hybrid.pt'
+        backbone_path = '/kaggle/input/polymer/hlgap-gnn3d-transformer-pcqm4mv2-v1.pt'
     else:
         data_root = 'data'
         chunk_dir = os.path.join(data_root, 'processed_chunks')
-        backbone_path = 'best_gnn_transformer_hybrid.pt'
+        backbone_path = 'hlgap-gnn3d-transformer-pcqm4mv2-v1.pt'
     
     train_lmdb = os.path.join(chunk_dir, 'polymer_train3d_dist.lmdb')
     test_lmdb = os.path.join(chunk_dir, 'polymer_test3d_dist.lmdb')
