@@ -85,8 +85,13 @@ cd kaggle_polymers_competition
 #### With Conda (Recommended for GPU / PyTorch Compatibility)
 
 ```bash
-conda env create -f environment.yml
-conda activate chemml_env
+conda create --name polymers_comp_env python==3.8.20
+conda activate polymers_comp_env
+conda install pytorch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 pytorch-cuda=11.8 -c pytorch -c nvidia 
+pip install -f https://data.pyg.org/whl/torch-2.4.1+cu118.html \ torch-geometric==2.6.1 \ torch-scatter==2.1.2+pt24cu118 \ torch-sparse==0.6.18+pt24cu118 \ torch-cluster==1.6.3+pt24cu118
+
+conda env update -n polymers_comp_env -f environment.yml --prune
+
 ```
 
 > This setup matches my environment (Python 3.8.20, CUDA 11.8, RTX 3070 Ti, PyTorch 2.4.1).  
