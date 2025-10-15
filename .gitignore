@@ -3,6 +3,7 @@
 *.db
 *.sdf
 *.pt
+*.pdf
 saved_models/
 plots/
 data/
