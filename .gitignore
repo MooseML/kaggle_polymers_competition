@@ -10,3 +10,5 @@ saved_models_*/
 notebooks/archive/*
 notebooks/04_post_competition/*
 ignore/*
+.kaggle/
+kaggle.json
