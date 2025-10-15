@@ -1,8 +1,8 @@
-# Polymer Property Prediction (NeurIPS Open Polymer 2025)
+# Polymer Property Prediction [NeurIPS - Open Polymer Prediction 2025](https://www.kaggle.com/competitions/neurips-open-polymer-prediction-2025)
+
 
 **Bronze medal (top ~6%) — 0.088 wMAE (private LB)**
-Predicting five polymer properties directly from SMILES using a **hybrid graph learning + tabular ensemble** pipeline.
-
+Predicting five polymer properties directly from SMILES using a hybrid graph learning + tabular ensemble pipeline. 
 <p align="center">
   <b>Targets:</b> Tg (glass transition), FFV (fractional free volume), Tc (thermal conductivity), Density, Rg (radius of gyration)
 </p>
@@ -62,39 +62,76 @@ kaggle_polymers_competition/
 
 ---
 
-## Setup
+## Local Environment Setup (GPU)
 
-```bash
-# Python >=3.10 recommended
-python -m venv .venv && source .venv/bin/activate
+This solution was ran **locally** on a GPU system with the following specs:
 
-pip install torch torch-geometric
-pip install ogb rdkit-pypi
-pip install scikit-learn lightgbm xgboost
-pip install optuna pandas numpy polars tqdm
-pip install matplotlib
+```
+Python 3.8.20
+CUDA 11.8
+NVIDIA RTX 3070 Ti
+PyTorch 2.4.1 + cu118
 ```
 
-> If you use GPUs, install the CUDA-matched PyTorch wheel first.
+## How to Run
+### 1. Clone the Repository
+```bash
+git clone git@github.com:MooseML/kaggle_polymers_competition.git
+cd kaggle_polymers_competition
+```
 
----
+### 2. Set Up the Python Environment
 
-## Data
+#### With Conda (Recommended for GPU / PyTorch Compatibility)
 
-1. Place `train.csv`, `test.csv`, and `sample_submission.csv` in `data/`.
-2. (Optional) Put any **supplemental** sources you want to merge (identical canonical SMILES) under `data/supplements/`.
-3. Build LMDB graph shards:
+```bash
+conda env create -f environment.yml
+conda activate chemml_env
+```
+
+> This setup matches my environment (Python 3.8.20, CUDA 11.8, RTX 3070 Ti, PyTorch 2.4.1).  
+> If you're using a different system or Python version, check [PyTorch installation options](https://pytorch.org/get-started/locally/) to match your drivers and hardware.
+
+
+You may need to manually install a compatible `torch` version depending on your hardware.
+
+
+### 3. Download the Dataset
+This dataset can be donwloaded from **Kaggle**:
+
+#### Option 1: Manually Download
+1. Go to [Kaggle](https://www.kaggle.com/competitions/neurips-open-polymer-prediction-2025/data)
+2. Click **Download All**.
+3. Extract them into the `data/` directory.
+
+#### Option 2: Run the Kaggle API Script
+Ensure your **Kaggle API key (`kaggle.json`)** is set up, then run:
+```sh
+python scripts/download_data.py
+```
+
+## 4. Create LMDBs
+
+1.  (Optional) Put any **supplemental** sources you want to merge (identical canonical SMILES) under `data/supplements/`.
+2.  Build LMDB graph shards. **Using the direct Python script is generally recommended** for cross-platform consistency and better integration with Conda environments.
+
+### Option 1: Recommended (Python Script) 
+Ensure your Conda environment is active and run the script directly:
 
 ```bash
 python scripts/data_preprocessing/build_lmdb.py train
 python scripts/data_preprocessing/build_lmdb.py test
 ```
 
----
+### Option 2: Windows Batch File Shortcut 
+For convenience on **Windows** systems, you can use the provided batch script. **Note:** This assumes your Python environment is correctly set up and accessible from the command line.
 
-## Quickstart
+```bash
+.\build_lmdb.bat
+```
 
-### Train a main model
+
+### 5. Train a main model
 
 ```bash
 python scripts/model_training/train_polymer.py \
@@ -104,7 +141,7 @@ python scripts/model_training/train_polymer.py \
   --use_rdkit_globals 1 --use_3d 1
 ```
 
-### Produce a submission
+### 6. Produce a submission
 
 ```bash
 python scripts/model_training/train_polymer.py \
@@ -156,28 +193,6 @@ python scripts/model_training/train_polymer.py \
 
 ---
 
-## Ensembling
-
-**Key idea:** blend, don’t “pick the winner”. You get variance reduction and complementary error patterns across model families.
-
-1. **Generate OOF & test predictions** for each base model (per property).
-2. **Per-label blending**:
-
-   * Start with a **simple weighted average**: `0.6 * GBM + 0.4 * GNN/GT`
-   * Or learn weights with **ridge/ElasticNet** on OOF (stacking).
-3. **Fold averaging**: average predictions across CV folds for each base learner.
-4. **Final submission**: average/blend per property, then stitch the 5 tasks into the submission CSV.
-
-Example (simple blend):
-
-```python
-# pseudo-code sketch
-blend = 0.6 * xgb_pred + 0.4 * gnn_pred
-submission = pd.concat([blend_Tg, blend_FFV, blend_Tc, blend_Density, blend_Rg], axis=1)
-submission.to_csv("submissions/ensemble.csv", index=False)
-```
-
----
 
 ## Results
 
