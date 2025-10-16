@@ -117,8 +117,7 @@ python scripts/download_data.py
 
 ## 4. Create LMDBs
 
-1.  (Optional) Put any **supplemental** sources you want to merge (identical canonical SMILES) under `data/supplements/`.
-2.  Build LMDB graph shards. **Using the direct Python script is generally recommended** for cross-platform consistency and better integration with Conda environments.
+1.  Build LMDB graph shards. **Using the direct Python script is generally recommended** for cross-platform consistency and better integration with Conda environments.
 
 ### Option 1: Recommended (Python Script) 
 Ensure your Conda environment is active and run the script directly:
@@ -133,26 +132,6 @@ For convenience on **Windows** systems, you can use the provided batch script. *
 
 ```bash
 .\build_lmdb.bat
-```
-
-
-### 5. Train a main model
-
-```bash
-python scripts/model_training/train_polymer.py \
-  --backbone graph_transformer \
-  --data_root data/processed_chunks \
-  --cv_folds 5 --seed 42 \
-  --use_rdkit_globals 1 --use_3d 1
-```
-
-### 6. Produce a submission
-
-```bash
-python scripts/model_training/train_polymer.py \
-  --inference_only 1 \
-  --checkpoint_dir saved_models/graph_transformer_fold* \
-  --write_submission submissions/gt_submission.csv
 ```
 
 ---
