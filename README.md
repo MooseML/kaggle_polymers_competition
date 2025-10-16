@@ -211,26 +211,14 @@ python scripts/model_training/train_polymer.py \
 | -------- | ----------------- | --------- | ------ |
 | FFV      | Graph Transformer | 0.005713  | 0.9223 |
 | Tg       | GNN2              | 47.105114 | 0.6040 |
-| Tc       | GNN2_Aug          | 0.025252  | 0.8157 |
-| Rg       | ExtraTrees_Aug    | 1.609396  | 0.7227 |
-| Density  | ExtraTrees_Aug    | 0.028135  | 0.8850 |
+| Tc       | GNN2_Aug          | 0.025115  | 0.8000 |
+| Rg       | ExtraTrees_Aug    | 1.532573  | 0.7371 |
+| Density  | XGB               | 0.024079  | 0.9339 |
 
 **Insights**
 
-* **Graph Transformers** shine on FFV (packing/long-range cues).
+* **Graph Transformers** shine on targets with more data like FFV.
 * **GNNs** lead Tg/Tc (thermal properties).
 * **Tree-based** models are robust on Rg/Density when fed curated descriptors.
 * **3D features** help across the board.
-* **Blending** beats per-property “winner selection”.
-
----
-
-## Notes & Best Practices
-
-* **Use both worlds**: graph learning + descriptor-rich boosters.
-* **Property-specific configs**: heads, regularization, feature trims.
-* **Keep OOFs**: required for reliable stacking/weight learning.
-* **Determinism**: fix seeds; log folds, versions, and feature sets.
-* **Small changes, big gains**: fold averaging, RobustScaler(y), gradient clipping.
-
 ---
