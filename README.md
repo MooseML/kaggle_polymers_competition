@@ -26,9 +26,7 @@ Predicting five polymer properties directly from SMILES using a hybrid graph lea
 * [Models](#models)
 * [Feature Engineering](#feature-engineering)
 * [Training & Evaluation](#training--evaluation)
-* [Ensembling](#ensembling)
 * [Results](#results)
-* [Notes & Best Practices](#notes--best-practices)
 
 ---
 
