@@ -19,16 +19,14 @@ import subprocess
 from pathlib import Path
 import zipfile
 
-# --- USER CONFIG (edit only if needed) ---------------------------------------
 COMPETITION_SLUG = "neurips-open-polymer-prediction-2025"
-DEST_DIR = Path("data")              # where files will be downloaded/extracted
-UNZIP = True                         # auto-unzip all .zip files into DEST_DIR
+DEST_DIR = Path("data")     
+UNZIP = True                     
 
 # If your kaggle.json is in a non-standard folder, set this to that folder path.
 # Example (Windows): r"C:\Users\you\.kaggle"
 # Example (macOS/Linux): "/Users/you/.kaggle"
 KAGGLE_CONFIG_DIR_OVERRIDE: str | None = None
-# -----------------------------------------------------------------------------
 
 def ensure_kaggle_cli():
     if shutil.which("kaggle") is None:
