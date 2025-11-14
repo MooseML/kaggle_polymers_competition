@@ -1,7 +1,7 @@
 # Polymer Property Prediction [NeurIPS - Open Polymer Prediction 2025](https://www.kaggle.com/competitions/neurips-open-polymer-prediction-2025)
 
 
-**Bronze medal (top ~6%) — 0.088 wMAE (private LB)**
+**Bronze medal (top ~6%) - 0.088 wMAE (private LB)**
 Predicting five polymer properties directly from SMILES using a hybrid graph learning + tabular ensemble pipeline. 
 <p align="center">
   <b>Targets:</b> Tg (glass transition), FFV (fractional free volume), Tc (thermal conductivity), Density, Rg (radius of gyration)
