@@ -143,7 +143,7 @@ For convenience on **Windows** systems, you can use the provided batch script. *
 ### Graph Transformer
 
 * GPS-style attention with shortest-path/structural biases (long-range interactions).
-* Same **hybrid fusion** option with global descriptors.
+* Same hybrid fusion option with global descriptors.
 * Positional/geometric encodings when 3D conformers are available.
 
 ### Tree-based Models
@@ -169,7 +169,7 @@ For convenience on **Windows** systems, you can use the provided batch script. *
 * **Optimization:** AdamW + cosine schedule, gradient clipping, mixed precision.
 * **Target scaling:** RobustScaler on y for graph models (inverse-transform at inference).
 * **CV:** 5-fold stratified regression splits, deterministic seeds, OOF prediction saving.
-* **Metrics:** MAE / RMSE / R² per property + competition **wMAE**.
+* **Metrics:** MAE / RMSE / R² per property + competition wMAE.
 
 ---
 
