@@ -11,8 +11,8 @@ Predicting five polymer properties directly from SMILES using a hybrid graph lea
 
 ## TLDR
 
-* **Hybrid modeling:** Graph Transformer / GNN backbones + **RDKit global descriptors** + **3D conformers**.
-* **Diverse ensemble:** XGBoost / LightGBM / ExtraTrees + neural models, blended **per property** using cross-validated predictions.
+* **Hybrid modeling:** Graph Transformer / GNN backbones + RDKit global descriptors + 3D conformers.
+* **Diverse ensemble:** XGBoost / LightGBM / ExtraTrees + neural models, blended per property using cross-validated predictions.
 * **Reproducible pipeline:** LMDB graph storage, deterministic CV, weighted loss for missing labels, Optuna tuning.
 
 ---
