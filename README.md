@@ -96,8 +96,6 @@ conda env update -n polymers_comp_env -f environment.yml --prune
 > If you're using a different system or Python version, check [PyTorch installation options](https://pytorch.org/get-started/locally/) to match your drivers and hardware.
 
 
-You may need to manually install a compatible `torch` version depending on your hardware.
-
 
 ### 3. Download the Dataset
 This dataset can be donwloaded from **Kaggle**:
